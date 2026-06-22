@@ -1,0 +1,21 @@
+# Core dependencies for the Intake Agent
+
+# FastAPI and web framework
+fastapi==0.138.0
+uvicorn[standard]==0.24.0
+
+# Pydantic for request/response validation
+pydantic==2.13.4
+
+# Gemini API SDK (migrated to the new maintained package)
+google-genai
+
+# Environment variable management
+python-dotenv==1.0.0
+
+# For development (optional but recommended)
+pytest==7.4.3
+# Keep httpx pinned to 0.28.1 for compatibility with FastAPI/Starlette test client.
+# Starlette currently warns that plain httpx support is deprecated; future upgrades
+# should consider migrating to httpx2 when the test client stack is updated.
+httpx==0.28.1

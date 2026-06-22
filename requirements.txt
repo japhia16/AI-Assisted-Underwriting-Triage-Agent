@@ -19,3 +19,7 @@ pytest==7.4.3
 # Starlette currently warns that plain httpx support is deprecated; future upgrades
 # should consider migrating to httpx2 when the test client stack is updated.
 httpx==0.28.1
+
+# PDF upload extraction
+pypdf==6.13.3
+python-multipart==0.0.32

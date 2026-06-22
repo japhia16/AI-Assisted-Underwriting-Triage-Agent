@@ -3,13 +3,15 @@ FastAPI server for the Intake Agent.
 Exposes endpoints for extraction only.
 """
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import uuid
 import datetime
+import io
 
 import logging
+import pypdf
 from src.logging_utils import RequestIdFilter, set_request_id
 from src.schemas import (
     ExtractRequest,
@@ -139,6 +141,26 @@ async def generate_memo(handoff: PricingHandoff) -> MemoResponse:
     except Exception as e:
         logger.error(f"Unexpected memo generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload-submission", response_model=ExtractResponse)
+async def upload_submission(file: UploadFile = File(...)) -> ExtractResponse:
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF uploads are supported.")
+
+    try:
+        contents = await file.read()
+        pdf_stream = io.BytesIO(contents)
+        reader = pypdf.PdfReader(pdf_stream)
+        extracted_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception as exc:
+        logger.error(f"PDF parsing failed: {exc}")
+        raise HTTPException(status_code=400, detail="Failed to parse uploaded PDF.")
+
+    result = process_request(extracted_text)
+    response = ExtractResponse(**result)
+    logger.info("PDF submission uploaded and extracted successfully.")
+    return response
 
 
 @app.get("/health")

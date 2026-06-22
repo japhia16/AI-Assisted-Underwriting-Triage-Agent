@@ -1,3 +1,6 @@
+import io
+
+import pypdf
 from fastapi.testclient import TestClient
 from src.main import app
 from src import intake_agent
@@ -162,3 +165,57 @@ def test_contradictory_information_triggers_clarification(monkeypatch):
     assert data["status"] == "needs_clarification"
     assert "building_age" in data["missing_fields"]
     assert data["clarifying_question"].startswith("Please provide the building age")
+
+
+def test_upload_submission_pdf(monkeypatch):
+    # Create an in-memory PDF file containing a simple insurance request.
+    pdf_stream = io.BytesIO()
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.add_metadata({"/Title": "Test PDF"})
+    writer.write(pdf_stream)
+
+    # Note: pypdf does not easily embed text in blank pages without additional setup,
+    # so we can instead use the same extraction logic against text if parsing sees no text.
+    # Use a monkeypatch for the extraction on the extracted text to validate the endpoint flow.
+    pdf_stream.seek(0)
+
+    def mock_process_request(text: str):
+        assert isinstance(text, str)
+        return {
+            "status": "complete",
+            "missing_fields": [],
+            "clarifying_question": "",
+            "submission_json": {
+                "property_address": "123 Example Road",
+                "location_city": "Chennai",
+                "location_state": "Tamil Nadu",
+                "occupancy_type": "Warehouse",
+                "construction_type": "Concrete",
+                "building_age": 15,
+                "sum_insured": 20000000.0,
+                "deductible": 100000.0,
+                "prior_claims_count": 0,
+                "sprinkler_system": True,
+                "fire_protection": "Fire extinguishers",
+                "nearby_hazard_notes": None,
+                "business_use": "Storage",
+                "number_of_floors": 2,
+                "basement_present": False,
+                "flood_zone_indicator": "low",
+                "storm_exposure_indicator": "inland",
+            },
+            "preprocessed_json": {},
+        }
+
+    monkeypatch.setattr("src.main.process_request", mock_process_request)
+
+    response = client.post(
+        "/upload-submission",
+        files={"file": ("test.pdf", pdf_stream.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "complete"
+    assert data["submission_json"]["location_city"] == "Chennai"

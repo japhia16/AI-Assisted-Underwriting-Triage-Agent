@@ -36,7 +36,7 @@ except Exception:
         async def async_check(self, run_input: Any) -> None:  # pragma: no cover - fallback
             return None
 
-from src.schemas import MemoResponse, PricingHandoff
+from src.schemas import MemoResponse, PricingHandoff, GuardrailValidationError
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -55,10 +55,8 @@ class DataIntegrityGuardrail(BaseGuardrail):
             pure_premium = None
 
         if pure_premium is None or not isinstance(pure_premium, (int, float)) or pure_premium <= 0:
-            raise InputCheckError(
-                "pure_premium must be provided and greater than zero.",
-                additional_data={"pure_premium": pure_premium},
-            )
+            # Raise a domain-specific exception that the FastAPI app can catch
+            raise GuardrailValidationError(f"pure_premium must be provided and greater than zero (got {pure_premium!r}).")
 
     async def async_check(self, run_input: Any) -> None:
         self.check(run_input)

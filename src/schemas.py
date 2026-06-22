@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 
 
+class GuardrailValidationError(Exception):
+    """Raised when a guardrail check fails and the request should be rejected."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 class ExtractRequest(BaseModel):
     """
     Input request for the /extract endpoint.

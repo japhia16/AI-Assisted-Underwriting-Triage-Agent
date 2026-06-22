@@ -17,6 +17,7 @@ from src.schemas import (
     MemoResponse,
     PricingHandoff,
     SubmissionJSON,
+    GuardrailValidationError,
 )
 from src.intake_agent import process_request
 from src.memo_agent import generate_underwriter_memo
@@ -97,6 +98,18 @@ async def generic_exception_handler(request: Request, exc: Exception):
         }
     }
     return JSONResponse(payload, status_code=500)
+
+
+@app.exception_handler(GuardrailValidationError)
+async def guardrail_exception_handler(request: Request, exc: GuardrailValidationError):
+    req_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex
+    payload = {
+        "status": "error",
+        "code": "GUARDRAIL_BREACH",
+        "message": f"The pricing validation guardrail failed: {getattr(exc, 'message', str(exc))}",
+        "request_id": req_id,
+    }
+    return JSONResponse(payload, status_code=422)
 
 
 @app.post("/extract", response_model=ExtractResponse)

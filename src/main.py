@@ -185,6 +185,26 @@ async def root():
 
 # Pricing endpoints intentionally removed from public API surface.
 
+from src.pricing_agent import get_price_and_explanation
+
+@app.post("/price")
+async def price_endpoint(handoff: PricingHandoff):
+    """Return pricing (GLM baseline, XGB prediction, uplift, final premium, SHAP drivers).
+
+    Accepts a `PricingHandoff` body containing `submission_json`.
+    """
+    try:
+        # Convert Pydantic SubmissionJSON -> dict
+        submission = handoff.submission_json.model_dump() if hasattr(handoff.submission_json, "model_dump") else dict(handoff.submission_json)
+        result = get_price_and_explanation(submission)
+        return JSONResponse(result, status_code=200)
+    except GuardrailValidationError as e:
+        logger.error(f"Guardrail breach when pricing: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"Pricing error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Pricing failed")
+
 
 if __name__ == "__main__":
     import uvicorn

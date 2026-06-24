@@ -47,15 +47,50 @@ with tab1:
                         st.success("✅ Submission processed successfully!")
                         
                         # Display results in two columns
-                        col1, col2 = st.columns(2)
-                        
+                        col1, col2 = st.columns([1, 1])
+
                         with col1:
                             st.subheader("1. AI Extracted Data")
                             st.json(res.json())
-                            
+
                         with col2:
                             st.subheader("2. Pricing Pipeline")
-                            st.info("Check your VS Code Backend Terminal to see the perfectly formatted XGBoost Pricing Quote and SHAP explainability drivers!")
+                            data = res.json()
+                            if data.get("status") == "complete" and data.get("submission_json"):
+                                # Call pricing endpoint
+                                try:
+                                    price_res = requests.post(f"{API_URL}/price", json={"submission_json": data["submission_json"]}, timeout=20)
+                                    if price_res.status_code == 200:
+                                        price = price_res.json()
+
+                                        # Professional display
+                                        st.markdown("### Final Premium")
+                                        final_premium = price.get("final_premium_INR")
+                                        uplift = price.get("uplift_pct")
+                                        glm_base = price.get("glm_baseline_INR")
+
+                                        # formatted
+                                        def fmt_inr(x):
+                                            try:
+                                                return f"₹{int(x):,}"
+                                            except Exception:
+                                                return str(x)
+
+                                        st.metric(label="Final Premium (INR)", value=fmt_inr(final_premium), delta=f"Uplift: {uplift}%")
+                                        st.caption(f"GLM baseline: {fmt_inr(glm_base)}")
+
+                                        st.markdown("#### Top SHAP Drivers")
+                                        shap = price.get("top_shap_features", [])
+                                        for i, feat in enumerate(shap, start=1):
+                                            direction = feat.get("direction", "")
+                                            impact = feat.get("shap_impact")
+                                            st.write(f"{i}. **{feat.get('feature')}** — {fmt_inr(impact)} ({direction})")
+                                    else:
+                                        st.error(f"Pricing API error {price_res.status_code}: {price_res.text}")
+                                except Exception as e:
+                                    st.error(f"Failed to call pricing API: {e}")
+                            else:
+                                st.info(data.get("clarifying_question") or "Extraction incomplete — please provide missing fields.")
                     else:
                         st.error(f"API Error {res.status_code}: {res.text}")
                 except Exception as e:

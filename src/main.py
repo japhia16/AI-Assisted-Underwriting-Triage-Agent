@@ -163,6 +163,26 @@ async def upload_submission(file: UploadFile = File(...)) -> ExtractResponse:
     return response
 
 
+@app.post("/extract-pdf")
+async def extract_from_pdf(file: UploadFile = File(...)):
+    import pdfplumber
+    try:
+        text = ""
+        # Read the uploaded PDF file directly from memory
+        with pdfplumber.open(file.file) as pdf:
+            for page in pdf.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    text += extracted + "\n"
+
+        # Pass the newly extracted text into your existing intake agent
+        result = process_request(text)
+        return result
+
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to parse PDF: {str(e)}"}
+
+
 @app.get("/health")
 async def health_check():
     return JSONResponse({"status": "ok"}, status_code=200)
@@ -196,6 +216,31 @@ async def price_endpoint(handoff: PricingHandoff):
     try:
         # Convert Pydantic SubmissionJSON -> dict
         submission = handoff.submission_json.model_dump() if hasattr(handoff.submission_json, "model_dump") else dict(handoff.submission_json)
+
+        # ── NULL GUARD: fill missing fields before XGBoost sees them ──
+        NUMERIC_DEFAULTS = {
+            "number_of_floors":         1,
+            "basement_present":         0,
+            "flood_zone_indicator":     0,
+            "storm_exposure_indicator": 0,
+            "fire_protection":          0,
+            "nearby_hazard_notes":      0,
+        }
+
+        CATEGORICAL_DEFAULTS = {
+            "location_state": "Unknown",
+            "business_use":   "Unknown",
+        }
+
+        for field, default in NUMERIC_DEFAULTS.items():
+            if submission.get(field) is None:
+                submission[field] = default
+
+        for field, default in CATEGORICAL_DEFAULTS.items():
+            if submission.get(field) is None:
+                submission[field] = default
+        # ──────────────────────────────────────────────────────────────
+
         result = get_price_and_explanation(submission)
         return JSONResponse(result, status_code=200)
     except GuardrailValidationError as e:

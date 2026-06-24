@@ -23,3 +23,9 @@ httpx==0.28.1
 # PDF upload extraction
 pypdf==6.13.3
 python-multipart==0.0.32
+streamlit==1.26.0
+requests==2.34.2
+
+# ML inference dependencies
+shap==0.52.0
+scikit-learn==1.6.1

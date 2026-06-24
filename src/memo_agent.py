@@ -26,6 +26,9 @@ try:
 except Exception:
     AGNO_AVAILABLE = False
 
+    class Agent:  # pragma: no cover - fallback
+        pass
+
     class InputCheckError(Exception):
         pass
 

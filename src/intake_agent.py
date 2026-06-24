@@ -101,6 +101,7 @@ def extract_with_gemini(text: str) -> Dict[str, Any]:
                 "basement_present": {"type": "BOOLEAN"},
                 "flood_zone_indicator": {"type": "STRING"},
                 "storm_exposure_indicator": {"type": "STRING"},
+                "requested_coverage": {"type": "STRING"},
             },
         }
         
@@ -127,6 +128,7 @@ Return JSON with these fields (use null for missing/unknown values):
 - basement_present (boolean)
 - flood_zone_indicator
 - storm_exposure_indicator
+- requested_coverage
 
 Do NOT calculate premium, risk score, or underwriting decision. Extract only what is stated or clearly implied."""
         prompt = f"""You are an insurance information extraction assistant. Extract structured underwriting information from the following customer request. Return ONLY valid JSON matching this exact structure, with no markdown or explanation.
@@ -152,6 +154,7 @@ Do NOT calculate premium, risk score, or underwriting decision. Extract only wha
     - basement_present (boolean)
     - flood_zone_indicator
     - storm_exposure_indicator
+    - requested_coverage
 
     Important formatting notes for numeric fields:
     - When returning monetary values such as `sum_insured` or `deductible`, return them as plain numeric values (no currency symbols, no commas). For example, return 40000000 rather than "$40,000,000".
@@ -236,6 +239,7 @@ def extract_with_mock(text: str) -> Dict[str, Any]:
         "basement_present": None,
         "flood_zone_indicator": None,
         "storm_exposure_indicator": None,
+        "requested_coverage": None,
     }
     
     # Simple heuristic extraction (very basic)
@@ -351,7 +355,21 @@ def extract_with_mock(text: str) -> Dict[str, Any]:
         claims_match = re.search(r"(\d+)\s*(?:prior\s*)?claim", text_lower)
         if claims_match:
             result["prior_claims_count"] = int(claims_match.group(1))
-    
+
+    # Extract requested coverage if explicitly mentioned
+    if result["requested_coverage"] is None:
+        if "coverage required" in text_lower or "requested coverage" in text_lower or "coverage:" in text_lower:
+            if "fire and allied" in text_lower or "allied perils" in text_lower:
+                result["requested_coverage"] = "Fire and Allied Perils"
+            elif "property all risk" in text_lower or "all risk" in text_lower:
+                result["requested_coverage"] = "Property All Risk"
+            elif "fire only" in text_lower:
+                result["requested_coverage"] = "Fire Only"
+            elif "fire + burglary" in text_lower or "fire and burglary" in text_lower or "burglary" in text_lower:
+                result["requested_coverage"] = "Fire + Burglary"
+            elif "standard fire" in text_lower or "special perils" in text_lower:
+                result["requested_coverage"] = "Standard Fire & Special Perils"
+
     return result
 
 

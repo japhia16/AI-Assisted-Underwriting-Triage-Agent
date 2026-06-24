@@ -241,6 +241,43 @@ async def price_endpoint(handoff: PricingHandoff):
                 submission[field] = default
         # ──────────────────────────────────────────────────────────────
 
+        OCCUPANCY_MAP = {
+            "Warehouse":     0,
+            "Office":        1,
+            "Retail":        2,
+            "Manufacturing": 3,
+            "Restaurant":    4,
+            "Hospitality":   5,
+            "Unknown":       6,
+        }
+
+        CONSTRUCTION_MAP = {
+            "Frame":                         0,
+            "Joisted Masonry":               1,
+            "Non-Combustible":               2,
+            "Masonry Non-Combustible":       3,
+            "Modified Fire Resistive":       4,
+            "Fire Resistive (ISO Class 6)":  5,
+            "Unknown":                       6,
+        }
+
+        submission["occupancy_type"] = OCCUPANCY_MAP.get(
+            submission.get("occupancy_type"), 6
+        )
+        submission["construction_type"] = CONSTRUCTION_MAP.get(
+            submission.get("construction_type"), 6
+        )
+        submission["sprinkler_system"] = int(bool(submission.get("sprinkler_system", False)))
+
+        NON_FEATURES = [
+            "property_address",
+            "location_city",
+            "location_state",
+            "nearby_hazard_notes",
+        ]
+        for f in NON_FEATURES:
+            submission.pop(f, None)
+
         result = get_price_and_explanation(submission)
         return JSONResponse(result, status_code=200)
     except GuardrailValidationError as e:

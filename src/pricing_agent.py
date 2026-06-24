@@ -1,40 +1,89 @@
 
 import pandas as pd
 import numpy as np
+import os
 import pickle
 import statsmodels.api as sm
 import importlib.util
+from src.preprocess_submission import normalize_requested_coverage
 
 UPLIFT_CAP = 0.40
 
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def get_price_and_explanation(submission_dict):
-    with open("freq_model.pkl",          "rb") as f: freq_model       = pickle.load(f)
-    with open("sev_model.pkl",           "rb") as f: sev_model        = pickle.load(f)
-    with open("xgb_model.pkl",           "rb") as f: xgb_model        = pickle.load(f)
-    with open("shap_explainer.pkl",      "rb") as f: explainer        = pickle.load(f)
-    with open("glm_feature_columns.pkl", "rb") as f: glm_feature_cols = pickle.load(f)
+    def load_pickle(name):
+        path = os.path.join(SRC_DIR, name)
+        with open(path, "rb") as f:
+            return pickle.load(f)
+
+    freq_model       = load_pickle("freq_model.pkl")
+    sev_model        = load_pickle("sev_model.pkl")
+    xgb_model        = load_pickle("xgb_model.pkl")
+    explainer        = load_pickle("shap_explainer.pkl")
+    glm_feature_cols = load_pickle("glm_feature_columns.pkl")
 
     spec   = importlib.util.spec_from_file_location(
-                 "preprocess_submission", "preprocess_submission.py")
+                 "preprocess_submission", os.path.join(SRC_DIR, "preprocess_submission.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     preprocess_submission = module.preprocess_submission
 
+    # Convert occupancy_type from int back to string if needed (price_endpoint converts it to int)
+    occupancy_value = submission_dict.get("occupancy_type")
+    if isinstance(occupancy_value, int):
+        occupancy_value = {
+            0: "Warehouse",
+            1: "Office",
+            2: "Retail",
+            3: "Manufacturing",
+            4: "Restaurant",
+            5: "Hospitality",
+            6: "Unknown",
+        }.get(occupancy_value, "Unknown")
+    else:
+        occupancy_value = occupancy_value or "Warehouse"
+
+    # Convert construction_type from int back to string if needed (price_endpoint converts it to int)
+    construction_value = submission_dict.get("construction_type")
+    if isinstance(construction_value, int):
+        construction_value = {
+            0: "Frame",
+            1: "Joisted Masonry",
+            2: "Non-Combustible",
+            3: "Masonry Non-Combustible",
+            4: "Modified Fire Resistive",
+            5: "Fire Resistive (ISO Class 6)",
+            6: "Unknown",
+        }.get(construction_value, "Unknown")
+    else:
+        construction_value = construction_value or "Unknown"
+
+    # MAP: NLP Extraction keys (from intake_agent) -> ML Model column names (Student 3 trained with these)
     ml_input = {
-        "Occupancy": submission_dict.get("occupancy_type") or "Warehouse",
-        "Construction_Type": submission_dict.get("construction_type") or "Unknown",
-        "Building_Age_Years": float(submission_dict.get("building_age") or 0),
-        "Sum_Insured_INR": float(submission_dict.get("sum_insured") or 0),
-        "Number_of_Employees": float(submission_dict.get("number_of_employees") or 0),
-        "Prior_Claims_Count": float(submission_dict.get("prior_claims_count") or 0),
-        "Deductible_INR": float(submission_dict.get("deductible") or 0),
-        "Sprinkler_System": "Yes" if submission_dict.get("sprinkler_system") is True else "No",
-        "Fire_Hydrant_Onsite": "Yes" if submission_dict.get("fire_protection") is True else "No",
-        "Years_in_Business": float(submission_dict.get("years_in_business") or 0),
-        "Industry_Type": submission_dict.get("business_use") or "General"
+        "Occupancy": occupancy_value,
+        "Construction_Type": construction_value,
+        "Industry_Type": submission_dict.get("business_use", "General"),
+        "Building_Age_Years": float(submission_dict.get("building_age", 0)),
+        "Sum_Insured_INR": float(submission_dict.get("sum_insured", 1000000)),
+        "Number_of_Employees": float(submission_dict.get("number_of_employees", 10)),
+        "Years_in_Business": float(submission_dict.get("years_in_business", 5)),
+        "Prior_Claims_Count": float(submission_dict.get("prior_claims_count", 0)),
+        "Deductible_INR": float(submission_dict.get("deductible", 50000)),
+        "Sprinkler_System": "Yes" if submission_dict.get("sprinkler_system") else "No",
+        "Fire_Hydrant_Onsite": "Yes" if submission_dict.get("fire_protection") else "No",
+        "Requested_Coverage": submission_dict.get("requested_coverage", "Standard Fire & Special Perils")
     }
 
+    # DEBUG: Confirm all columns exist before preprocessing
+    print("ML INPUT COLUMNS:")
+    print(list(ml_input.keys()))
+
     df_input = pd.DataFrame([ml_input])
+    
+    print("\nDATAFRAME COLUMNS:")
+    print(df_input.columns.tolist())
+    
     df_clean = preprocess_submission(df_input)
 
     # Align GLM columns

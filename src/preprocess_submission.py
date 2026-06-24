@@ -1,12 +1,47 @@
 
+import logging
+import os
 import pandas as pd
 import pickle
+
+logger = logging.getLogger(__name__)
+
+COVERAGE_LABEL_MAP = {
+    "fire and allied perils":           "Standard Fire & Special Perils",
+    "standard fire and special perils": "Standard Fire & Special Perils",
+    "property all risk":                "All Risk (Comprehensive)",
+    "all risk":                         "All Risk (Comprehensive)",
+    "comprehensive":                    "All Risk (Comprehensive)",
+    "fire only":                        "Fire Only",
+    "fire + burglary":                  "Fire + Burglary",
+    "fire and burglary":                "Fire + Burglary",
+}
 
 cat_cols = ["Occupancy", "Construction_Type", "Industry_Type",
             "Sprinkler_System", "Fire_Hydrant_Onsite", "Requested_Coverage"]
 
 num_cols = ["Building_Age_Years", "Sum_Insured_INR", "Number_of_Employees",
             "Years_in_Business", "Prior_Claims_Count", "Deductible_INR"]
+
+def normalize_requested_coverage(value):
+    if value is None:
+        return "Standard Fire & Special Perils"
+    if not isinstance(value, str):
+        value = str(value)
+    text = value.strip().lower()
+    if text in COVERAGE_LABEL_MAP:
+        return COVERAGE_LABEL_MAP[text]
+    for key, normalized in COVERAGE_LABEL_MAP.items():
+        if key in text:
+            return normalized
+    if text in ["unknown", "", "na", "n/a"]:
+        return "Unknown"
+    logger.warning(
+        "Unknown requested coverage label %r; defaulting to Standard Fire & Special Perils",
+        value,
+    )
+    return "Standard Fire & Special Perils"
+
 
 def preprocess_submission(df):
     """
@@ -25,10 +60,14 @@ def preprocess_submission(df):
         if col in df.columns:
             df[col] = df[col].fillna(df[col].median())
 
-    # Load the saved encoder and scaler
-    with open("encoder.pkl", "rb") as f:
+    if "Requested_Coverage" in df.columns:
+        df["Requested_Coverage"] = df["Requested_Coverage"].apply(normalize_requested_coverage)
+
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    # Load the saved encoder and scaler from src/ so the runtime path is deterministic
+    with open(os.path.join(src_dir, "encoder.pkl"), "rb") as f:
         encoder = pickle.load(f)
-    with open("scaler.pkl", "rb") as f:
+    with open(os.path.join(src_dir, "scaler.pkl"), "rb") as f:
         scaler = pickle.load(f)
 
     # Encode categorical columns

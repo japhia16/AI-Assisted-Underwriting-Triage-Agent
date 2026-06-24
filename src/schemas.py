@@ -46,6 +46,7 @@ class SubmissionJSON(BaseModel):
     basement_present: Optional[bool] = Field(None, description="Whether basement exists")
     flood_zone_indicator: Optional[str] = Field(None, description="Flood risk indicator (e.g., low, medium, high)")
     storm_exposure_indicator: Optional[str] = Field(None, description="Storm exposure (e.g., coastal, inland)")
+    requested_coverage: Optional[str] = Field(None, description="Requested insurance coverage type, e.g. Fire and Allied Perils")
 
     @model_validator(mode="after")
     def check_deductible_vs_sum_insured(self) -> "SubmissionJSON":
@@ -76,6 +77,7 @@ class PricingHandoff(BaseModel):
     Contains the structured submission data and optional preprocessed features.
     """
     submission_json: SubmissionJSON = Field(..., description="Structured underwriting submission data")
+    pricing: Optional[dict] = Field(None, description="Pricing results passed to memo generation, including final premium and SHAP drivers.")
     preprocessed_json: Optional[dict] = Field(None, description="Optional preprocessed features from the intake pipeline")
     broker_notes: Optional[str] = Field(None, description="Optional broker or underwriter notes")
     pure_premium: Optional[float] = Field(

@@ -186,6 +186,7 @@ def _generate_memo_with_agno(handoff: PricingHandoff) -> MemoResponse:
 
     run_input = {
         "submission_json": handoff.submission_json.model_dump(),
+        "pricing": handoff.pricing or {},
         "preprocessed_json": handoff.preprocessed_json or {},
         "broker_notes": handoff.broker_notes or "",
         "pure_premium": handoff.pure_premium,
@@ -198,7 +199,11 @@ def _generate_memo_with_agno(handoff: PricingHandoff) -> MemoResponse:
 def _generate_memo_with_template(handoff: PricingHandoff) -> MemoResponse:
     submission = handoff.submission_json
     pricing_text = "Pricing details are not available in this fallback memo."
-    if handoff.pure_premium is not None:
+    pricing = handoff.pricing or {}
+    if pricing.get("final_premium_INR") is not None:
+        final_premium = float(pricing["final_premium_INR"])
+        pricing_text = format_pricing_summary(final_premium, final_premium * 0.9, final_premium * 1.1)
+    elif handoff.pure_premium is not None:
         pricing_text = format_pricing_summary(handoff.pure_premium, handoff.pure_premium * 0.9, handoff.pure_premium * 1.1)
 
     memo_lines = [

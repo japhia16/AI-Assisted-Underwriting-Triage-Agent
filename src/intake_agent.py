@@ -97,6 +97,7 @@ def extract_with_gemini(text: str) -> Dict[str, Any]:
                 "nearby_hazard_notes": {"type": "STRING"},
                 "business_use": {"type": "STRING"},
                 "number_of_floors": {"type": "INTEGER"},
+                "number_of_employees": {"type": "INTEGER"},
                 "basement_present": {"type": "BOOLEAN"},
                 "flood_zone_indicator": {"type": "STRING"},
                 "storm_exposure_indicator": {"type": "STRING"},
@@ -128,6 +129,35 @@ Return JSON with these fields (use null for missing/unknown values):
 - storm_exposure_indicator
 
 Do NOT calculate premium, risk score, or underwriting decision. Extract only what is stated or clearly implied."""
+        prompt = f"""You are an insurance information extraction assistant. Extract structured underwriting information from the following customer request. Return ONLY valid JSON matching this exact structure, with no markdown or explanation.
+
+    Customer request: {text}
+
+    Return JSON with these fields (use null for missing/unknown values):
+    - property_address
+    - location_city
+    - location_state
+    - occupancy_type
+    - construction_type
+    - building_age (number)
+    - sum_insured (number)
+    - deductible (number)
+    - prior_claims_count (number)
+    - number_of_employees (number)
+    - sprinkler_system (boolean)
+    - fire_protection
+    - nearby_hazard_notes
+    - business_use
+    - number_of_floors (number)
+    - basement_present (boolean)
+    - flood_zone_indicator
+    - storm_exposure_indicator
+
+    Important formatting notes for numeric fields:
+    - When returning monetary values such as `sum_insured` or `deductible`, return them as plain numeric values (no currency symbols, no commas). For example, return 40000000 rather than "$40,000,000".
+    - When returning counts such as `prior_claims_count` and `number_of_employees`, return integers that correspond to the labels "Prior Claims" and "Employees" in the text. Do not confuse the two.
+
+    Do NOT calculate premium, risk score, or underwriting decision. Extract only what is stated or clearly implied."""
         
         # Call Gemini API with the new google-genai client, requesting Pydantic
         # `SubmissionJSON` as the response schema. Fall back to mock on any error.
@@ -217,6 +247,20 @@ def extract_with_mock(text: str) -> Dict[str, Any]:
         if city in text_lower:
             result["location_city"] = city.capitalize()
             break
+
+    # If an Address: line is present, try to extract the city from it (comma-separated)
+    for line in text.splitlines():
+        if "address" in line.lower():
+            parts = line.split(":", 1)
+            if len(parts) > 1:
+                addr = parts[1].strip()
+                result["property_address"] = addr
+                # attempt to get city as the next comma-separated token
+                tokens = [p.strip() for p in addr.split(",") if p.strip()]
+                if len(tokens) >= 2:
+                    # choose the second token as city (common pattern: street, city, state)
+                    result["location_city"] = tokens[1]
+            break
     
     # Try to find occupancy type
     occupancies = ["warehouse", "office", "factory", "retail", "store", "building"]
@@ -226,10 +270,20 @@ def extract_with_mock(text: str) -> Dict[str, Any]:
             break
     
     # Try to find construction type
-    constructions = ["concrete", "steel", "brick", "wood", "reinforced"]
+    constructions = ["concrete", "steel", "brick", "wood", "reinforced", "fire resistive", "masonry", "tilt-up"]
     for const in constructions:
         if const in text_lower:
-            result["construction_type"] = const.capitalize()
+            result["construction_type"] = const.title()
+            break
+
+    # Also check for explicit 'Construction' or 'Construction Class' lines and use their value
+    for line in text.splitlines():
+        if "construction" in line.lower():
+            parts = line.split(":", 1)
+            if len(parts) > 1:
+                val = parts[1].strip()
+                # prefer explicit value from the line
+                result["construction_type"] = val
             break
     
     # Try to extract age (very simplistic: look for number + "year")
@@ -239,27 +293,64 @@ def extract_with_mock(text: str) -> Dict[str, Any]:
         result["building_age"] = int(age_match.group(1))
     
     # Try to extract sum insured (look for "crore", "lakh", "million", etc.)
-    sum_match = re.search(r"([\d.]+)\s*(crore|lakh|million|thousand)", text_lower)
-    if sum_match:
-        value = float(sum_match.group(1))
-        unit = sum_match.group(2).lower()
-        if "crore" in unit:
-            result["sum_insured"] = value * 10000000
-        elif "lakh" in unit:
-            result["sum_insured"] = value * 100000
-        elif "million" in unit:
-            result["sum_insured"] = value * 1000000
-        elif "thousand" in unit:
-            result["sum_insured"] = value * 1000
+    # First, look for explicit monetary patterns on their lines (e.g., "$40,000,000", "Total Sum Insured: $40,000,000")
+    for line in text.splitlines():
+        if "sum insured" in line.lower() or "total sum insured" in line.lower():
+            m = re.search(r"[\$₹€]?\s*([\d,]+(?:\.\d+)?)", line)
+            if m:
+                num = float(m.group(1).replace(",", ""))
+                result["sum_insured"] = num
+                break
+
+    # If not found, fall back to unit-aware parsing (crore/lakh/million/thousand)
+    if result["sum_insured"] is None:
+        sum_match = re.search(r"([\d.]+)\s*(crore|lakh|million|thousand)", text_lower)
+        if sum_match:
+            value = float(sum_match.group(1))
+            unit = sum_match.group(2).lower()
+            if "crore" in unit:
+                result["sum_insured"] = value * 10000000
+            elif "lakh" in unit:
+                result["sum_insured"] = value * 100000
+            elif "million" in unit:
+                result["sum_insured"] = value * 1000000
+            elif "thousand" in unit:
+                result["sum_insured"] = value * 1000
     
     # Check for sprinkler system
     if "sprinkler" in text_lower:
         result["sprinkler_system"] = "installed" in text_lower or "present" in text_lower
     
-    # Check for prior claims
-    claims_match = re.search(r"(\d+)\s*(?:prior\s*)?claim", text_lower)
-    if claims_match:
-        result["prior_claims_count"] = int(claims_match.group(1))
+    # Extract number of employees (line-oriented to avoid picking numbers from other lines)
+    result["number_of_employees"] = None
+    for line in text.splitlines():
+        if "employee" in line.lower():
+            m = re.search(r"(\d+)", line)
+            if m:
+                result["number_of_employees"] = int(m.group(1))
+                break
+
+    # Extract deductible similarly (look for 'deductible' on its line)
+    for line in text.splitlines():
+        if "deductible" in line.lower():
+            m = re.search(r"[\$₹€]?\s*([\d,]+(?:\.\d+)?)", line)
+            if m:
+                result["deductible"] = float(m.group(1).replace(",", ""))
+                break
+
+    # Check for prior claims (prefer explicit 'Prior Claims: N' on the same line)
+    result["prior_claims_count"] = None
+    for line in text.splitlines():
+        if "prior" in line.lower() and "claim" in line.lower():
+            m = re.search(r"(\d+)", line)
+            if m:
+                result["prior_claims_count"] = int(m.group(1))
+                break
+    # Fallback: look for a nearby pattern, but only if above did not find it
+    if result["prior_claims_count"] is None:
+        claims_match = re.search(r"(\d+)\s*(?:prior\s*)?claim", text_lower)
+        if claims_match:
+            result["prior_claims_count"] = int(claims_match.group(1))
     
     return result
 
@@ -430,7 +521,17 @@ def process_request(text: str) -> Dict[str, Any]:
     if status == "complete":
         try:
             preprocessed = preprocess_submission(extracted)
-            response["preprocessed_json"] = preprocessed
+            # Convert DataFrame result to a plain dict for JSON/Pydantic
+            try:
+                if hasattr(preprocessed, "to_dict"):
+                    response["preprocessed_json"] = preprocessed.to_dict(orient="records")[0]
+                elif isinstance(preprocessed, dict):
+                    response["preprocessed_json"] = preprocessed
+                else:
+                    response["preprocessed_json"] = dict(preprocessed)
+            except Exception:
+                # Fallback: don't include preprocessed JSON if conversion fails
+                logger.warning("Could not serialize preprocessed features to dict; omitting from response.")
         except Exception as e:
             # Do not fail the extraction; log and continue with None
             logger.warning(f"Preprocessing failed or unavailable: {e}")

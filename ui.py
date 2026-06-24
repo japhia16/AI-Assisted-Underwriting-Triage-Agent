@@ -20,6 +20,7 @@ except requests.exceptions.RequestException:
 # Main Interface
 st.title("🛡️ AI-Assisted Underwriter Workbench")
 st.markdown("Paste a broker submission below to instantly extract structured data and generate an XGBoost-powered pricing quote.")
+st.markdown("---")
 
 # Tabs for the UI
 tab1, tab2 = st.tabs(["✍️ Paste Raw Text", "📄 Upload PDF (Coming Soon)"])
@@ -59,32 +60,49 @@ with tab1:
                             if data.get("status") == "complete" and data.get("submission_json"):
                                 # Call pricing endpoint
                                 try:
-                                    price_res = requests.post(f"{API_URL}/price", json={"submission_json": data["submission_json"]}, timeout=20)
+                                    price_res = requests.post(
+                                        f"{API_URL}/price",
+                                        json={"submission_json": data["submission_json"]},
+                                        timeout=20,
+                                    )
                                     if price_res.status_code == 200:
                                         price = price_res.json()
 
-                                        # Professional display
-                                        st.markdown("### Final Premium")
-                                        final_premium = price.get("final_premium_INR")
-                                        uplift = price.get("uplift_pct")
-                                        glm_base = price.get("glm_baseline_INR")
-
-                                        # formatted
                                         def fmt_inr(x):
+                                            if x is None:
+                                                return "N/A"
                                             try:
                                                 return f"₹{int(x):,}"
                                             except Exception:
                                                 return str(x)
 
-                                        st.metric(label="Final Premium (INR)", value=fmt_inr(final_premium), delta=f"Uplift: {uplift}%")
-                                        st.caption(f"GLM baseline: {fmt_inr(glm_base)}")
+                                        premium_card, shap_card = st.columns([1, 1], gap="large")
+                                        with premium_card:
+                                            st.markdown("### Premium Summary")
+                                            st.metric(
+                                                label="Final Premium",
+                                                value=fmt_inr(price.get("final_premium_INR")),
+                                                delta=f"Uplift: {price.get('uplift_pct', 0)}%",
+                                            )
+                                            st.write("**GLM baseline:**", fmt_inr(price.get("glm_baseline_INR")))
+                                            st.write("**XGB prediction:**", fmt_inr(price.get("xgb_prediction_INR")))
 
-                                        st.markdown("#### Top SHAP Drivers")
-                                        shap = price.get("top_shap_features", [])
-                                        for i, feat in enumerate(shap, start=1):
-                                            direction = feat.get("direction", "")
-                                            impact = feat.get("shap_impact")
-                                            st.write(f"{i}. **{feat.get('feature')}** — {fmt_inr(impact)} ({direction})")
+                                        with shap_card:
+                                            st.markdown("### Top SHAP Drivers")
+                                            shap = price.get("top_shap_features", [])
+                                            if shap:
+                                                for i, feat in enumerate(shap, start=1):
+                                                    direction = feat.get("direction", "")
+                                                    impact = feat.get("shap_impact")
+                                                    st.markdown(
+                                                        "<div style='border-left: 4px solid #1f77b4; padding: 10px 12px; margin-bottom: 10px; background: #fafafa;'>"
+                                                        f"<strong>{i}. {feat.get('feature')}</strong><br>"
+                                                        f"<span style='color: #555;'>{direction} · {fmt_inr(impact)}</span>"
+                                                        "</div>",
+                                                        unsafe_allow_html=True,
+                                                    )
+                                            else:
+                                                st.info("No SHAP explanation available.")
                                     else:
                                         st.error(f"Pricing API error {price_res.status_code}: {price_res.text}")
                                 except Exception as e:

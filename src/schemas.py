@@ -37,6 +37,7 @@ class SubmissionJSON(BaseModel):
     sum_insured: Optional[float] = Field(None, gt=0, description="Coverage amount in currency units")
     deductible: Optional[float] = Field(None, ge=0, description="Deductible amount")
     prior_claims_count: Optional[int] = Field(None, description="Number of prior insurance claims")
+    number_of_employees: int | None = None
     sprinkler_system: Optional[bool] = Field(None, description="Whether sprinkler system is installed")
     fire_protection: Optional[str] = Field(None, description="Fire protection measures (e.g., fire extinguisher, fire station nearby)")
     nearby_hazard_notes: Optional[str] = Field(None, description="Nearby hazards (e.g., industrial area, river)")

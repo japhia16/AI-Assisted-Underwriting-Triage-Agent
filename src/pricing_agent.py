@@ -21,17 +21,17 @@ def get_price_and_explanation(submission_dict):
     preprocess_submission = module.preprocess_submission
 
     ml_input = {
-        "Occupancy": submission_dict.get("occupancy_type", "Warehouse"),
-        "Construction_Type": submission_dict.get("construction_type", "Unknown"),
-        "Building_Age_Years": submission_dict.get("building_age", 0),
-        "Sum_Insured_INR": submission_dict.get("sum_insured", 0),
-        "Number_of_Employees": submission_dict.get("number_of_employees", 0),
-        "Prior_Claims_Count": submission_dict.get("prior_claims_count", 0),
-        "Deductible_INR": submission_dict.get("deductible", 0),
-        "Sprinkler_System": "Yes" if submission_dict.get("sprinkler_system") else "No",
-        "Fire_Hydrant_Onsite": "Yes" if submission_dict.get("fire_protection") else "No",
-        "Years_in_Business": submission_dict.get("years_in_business", 0),
-        "Industry_Type": submission_dict.get("business_use", "General")
+        "Occupancy": submission_dict.get("occupancy_type") or "Warehouse",
+        "Construction_Type": submission_dict.get("construction_type") or "Unknown",
+        "Building_Age_Years": float(submission_dict.get("building_age") or 0),
+        "Sum_Insured_INR": float(submission_dict.get("sum_insured") or 0),
+        "Number_of_Employees": float(submission_dict.get("number_of_employees") or 0),
+        "Prior_Claims_Count": float(submission_dict.get("prior_claims_count") or 0),
+        "Deductible_INR": float(submission_dict.get("deductible") or 0),
+        "Sprinkler_System": "Yes" if submission_dict.get("sprinkler_system") is True else "No",
+        "Fire_Hydrant_Onsite": "Yes" if submission_dict.get("fire_protection") is True else "No",
+        "Years_in_Business": float(submission_dict.get("years_in_business") or 0),
+        "Industry_Type": submission_dict.get("business_use") or "General"
     }
 
     df_input = pd.DataFrame([ml_input])
